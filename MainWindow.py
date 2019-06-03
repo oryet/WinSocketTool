@@ -6,7 +6,7 @@ import logging
 import json
 from OpenExcelTestPlan import ExcelPlan
 from DownLink import DownLinkThread
-import socketServer
+import PublicLib.Socket.socketServer as socketServer
 import threading
 import queue
 

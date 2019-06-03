@@ -8,7 +8,7 @@ from PublicLib.Protocol.protocol import prtlDealFrame
 from PyQt5.QtWidgets import QTableWidgetItem
 import pandas as pd
 import json
-import socketServer
+import PublicLib.Socket.socketServer as socketServer
 import PublicLib.Protocol.ly_Json as jsonframe
 
 # 协议定义
@@ -71,7 +71,7 @@ def SendMake(self, plan, flag, data, value, timeout, answer):
     if flag == '发送' or flag == 'Read' or flag == 'Set':
         # 曲线读配置文件发送
         if value == "config" and CuverInfo["Index"] == 0:
-            cfg = loadCuverConfig()
+            cfg = loadDefaultSettings("cuver.json")
             CuverInfo["List"] = CuverFonfig(cfg["start"], cfg["num"], cfg["density"])
             value = CuverInfo["List"][0]
             CuverInfo["Index"]+=1
@@ -104,7 +104,13 @@ def SendMake(self, plan, flag, data, value, timeout, answer):
             # 串口发送
             # serialSend(plan, senddata, self)
             nSocket = self.uim.socketComboBox.currentIndex()
-            socketServer.SocketSend(nSocket, senddata)
+            linkNum = socketServer.GetLinkNum()
+            print("downlink", linkNum)
+            if 0 < linkNum and nSocket < linkNum:
+                socketServer.SocketSend(nSocket, senddata)
+            else:
+                print("Link err", linkNum)
+                self.test["SocketThread"] = "stop"
 
             # 保存发送帧，用于接收部分比对
             self.test["SendFrame"] = senddata
@@ -139,12 +145,30 @@ def RecvProcess(self):
     if not self.qRecv.empty():
         data = self.qRecv.get()
 
-        plan = self.uim.planComboBox.currentText()
-        type = judgePrtl(plan)
-
         if "linkNum" in data:
             SocketLinkManage(self, data['linkNum'])
             return
+
+        linkNum = socketServer.GetLinkNum()
+        if linkNum > 0:
+            SocketLinkManage(self, linkNum)
+
+        if isinstance(data, dict):
+            if 'recvData' in data:
+                data = data["recvData"]
+        elif isinstance(data, str):
+            data = jsonframe.subStrToJson(data)
+            if "DataTime" not in data["recvData"]:
+                return
+            data = data["recvData"]
+        else:
+            return
+
+        if isinstance(data, str):
+            data = jsonframe.subStrToJson(data)
+
+        plan = self.uim.planComboBox.currentText()
+        type = judgePrtl(plan)
 
         # 是否有报文， 解析成标准报文， 供收发界面显示
         senddata = self.test["SendFrame"]
@@ -153,7 +177,7 @@ def RecvProcess(self):
         answer = jsonframe.subStrToJson(answer)
 
         # 界面显示
-        data = jsonframe.subStrToJson(data)
+        # data = jsonframe.subStrToJson(data)
         mainlog = showinfo.addTimelog(str(data))
         self.uim.RxTextEdit.append(mainlog)
 
@@ -196,7 +220,7 @@ def action(self):
         cnt += 1
         RecvProcess(self)
         SendProcess(self)
-        time.sleep(0.2)
+        time.sleep(0.1)
         if cnt > 10:
             cnt = 0
             print("Downlink alive")
@@ -215,9 +239,6 @@ if __name__ == '__main__':
     flag = '发送'
     data = '68 12 34 56 78 90 16'
     timeout = 1
-
-    # DownLinkThread(self=plan)
-
 
     num = 60
     start = "201812201234"
